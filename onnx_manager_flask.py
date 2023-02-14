@@ -119,7 +119,8 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
       tensor_key = resData["splitLayer"]
       dictTensors[resData["splitLayer"]] = resData["result"]
     
-    #Sending the Intermediate Tensors to the server
+    #Send the Intermediate Tensors to the server
+    print("Sending the intermediate tensors to the server...")
     departure_time = time.time()
     data = {'x': dictTensors[tensor_key].tolist()}
     response = requests.post("http://127.0.0.1:5000/test", json=data).json()
