@@ -54,7 +54,8 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
   if platform == None: platform = "AMD64"
 
   #TESTING
-  dictTensors = {} # global dictTensors 
+  #dictTensors = {} 
+  global dictTensors 
 
   #Iterate through the subdirectories to find the ONNX model splitted at our selected layer
   onnx_file = None
@@ -139,10 +140,550 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
     print("#### 2nd Inf. Tensor Load Time: " + str(response["tensorLoadTime"]) + " s")
 
     if split_layer == "PROFILING":
-      return response["execTime1"], response["execTime2"], response["tensorLength"], response["tensorSaveTime"], response["tensorLoadTime"], uploading_time, response["profilingTableCloud"]
+      return response["execTime1"], response["execTime2"], 0, 0, response["tensorLength"], response["tensorSaveTime"], response["tensorLoadTime"], uploading_time, response["profilingTableCloud"]
     else: 
-      return response["execTime1"], response["execTime2"], response["tensorLength"], response["tensorSaveTime"], response["tensorLoadTime"], uploading_time
-  return -1,-1,-1,-1,-1,-1
+      return response["execTime1"], response["execTime2"], 0, 0, response["tensorLength"], response["tensorSaveTime"], response["tensorLoadTime"], uploading_time
+  return -1,-1,-1,-1,-1,-1,-1,-1
     
+def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
+                          platform, repetitions, exec_provider, 
+                          device_type, xml_file = None, warmupTime = None):
+  '''
+  Run a complete cycle of inference for every splitted pair of models in the folder passed as argument, save the results in a CSV File and Plot the results.
+  To run a complete cycle means to run the first half of the model locally, get the results, load them on the cloud(minio) and then schedule 
+  the second part of the model on the cloud(OSCAR) and get the results.
+
+  :param onnx_file: the full unsplitted ONNX file (used to gather useful information)
+  :param onnx_path: the path to the collection of models were to find the correct one to use for the inference
+  :param image_file: the path to the image if using a single image
+  :param image_batch: the path to the folder containing the batch of images if using a batch
+  :param img_size_x: the horrizontal size of the images
+  :param img_size_y: the vertical size of the images
+  :param is_grayscale: true if the image is grayscale, false otherwise
+  :param repetition: specifies the number of repetitions to execute
+  :param exec_provider: the Execution Provider used at inference (CPU (default) | GPU | OpenVINO | TensorRT | ACL)
+  :param device: specifies the device type such as 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', etc..
+  :param platform: the platform where the script is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
+  :param warmupTime: a Warmup Time[sec] (default: 60=1m), to run before the execution of the RUN ALL Cycle
+  '''
+  #Default Argument Values
+  if is_grayscale == None: is_grayscale = False
+  if platform == None: platform = "AMD64"
+  if repetitions == None: repetitions = 1
+  if warmupTime == None: warmupTime = 0#60
+
+  #TESTING
+  global dictTensors
+  dictTensors = {}
+
+  #Load the Onnx Model
+  model_onnx = load_onnx_model(onnx_file)
+  t_1st_inf, t_2nd_inf, t_oscar_job, t_kube_pod, tensor_lenght, t_tensor_save, t_tensor_load, t_networking = 0,0,0,0,0,0,0,0
+
+  # Process input data (image or batch of images)
+  inputData = data_processing(image_file, image_batch, img_size_x, img_size_y, is_grayscale, model_onnx.graph.input[0])
+  batchSize = inputData.shape[0]
+
+  # A WARMUP procedure is performed before proceding with the RUN_ALL Cycle
+  warmupStart = time.perf_counter()
+  while (time.perf_counter() - warmupStart) < int(warmupTime):
+    _, _ = onnx_run_first_half(onnx_file, inputData, True, exec_provider, device_type, profiling=False, xml_file=xml_file)
+
+  # Get the Inference Time of each layer (it can be also a sequence of nodes) by analyzing the profiling Table
+  '''with open("tensor_dict.pkl", "rb") as tf:
+    dictTensors = pickle.load(tf)
+  listSingleLayerInfProfiling = getSingleLayerExecutionTimeTable(model_onnx, list(dictTensors.keys()), profilingTable)'''
+
+  #Open an cvs file to save the results
+  with open(RESULTS_CSV_FILE, 'w', newline='') as csvfile:
+    with open(RESULTS_CSV_FILE2, 'w', newline='') as csvfile2:
+      # Repeat the whole cycle the specified number of times
+      for rep in range(0, repetitions):
+        #fieldnames = ['SplitLayer', 'Time1', 'Time2', 'Time3', 'Time4']
+        fieldnames = ['SplitLayer', '1stInfTime', '2ndInfTime', 'oscarJobTime', 'kubePodTime', 
+                      'tensorSaveTime', 'tensorLoadTime', 'tensorLength', 'networkingTime']
+        cvswriter = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        cvswriter.writeheader()
+
+        # Process input data (image or batch of images)     
+        inputData = data_processing(image_file, image_batch, img_size_x, img_size_y, is_grayscale, model_onnx.graph.input[0])
+        batchSize =inputData.shape[0]   
+
+        # Process and get the ProfiligTable by running at inference the full model (A single WARMUP execution is also performed before)  ##used to be outside the repetitions
+        _, _ = onnx_run_first_half(onnx_file, inputData, True, exec_provider, device_type, profiling=True, xml_file=xml_file)
+        resData, profilingTable = onnx_run_first_half(onnx_file, inputData, True, exec_provider, device_type, profiling=True, xml_file=xml_file)
+
+        #Execute at inference the whole model locally AND Use profiling (for now disabled)
+        t_1st_inf = onnx_run_first_half(onnx_file, inputData, True, exec_provider, device_type, profiling=False, xml_file=xml_file)[0]["execTime1"]  
+        print("Finished inference of the whole layer locally..")
+        #cvswriter.writerow({'SplitLayer':"NO_SPLIT", "Time1":t_1st_inf, "Time2":0, "Time3":0, "Time4":0})
+        cvswriter.writerow({"SplitLayer":"NO_SPLIT", "1stInfTime":t_1st_inf, "2ndInfTime":0, "oscarJobTime":0, "kubePodTime":0, 
+                            "tensorSaveTime":0, "tensorLoadTime":0, "tensorLength":0, "networkingTime":0})
+        print("Saved results..")  
+
+        #Execute at inference the whole model on the Cloud (OSCAR)
+        try:
+          (t_1st_inf, t_2nd_inf, t_oscar_job, t_kube_pod, 
+            tensor_lenght, t_tensor_save, t_tensor_load, t_networking) = onnx_run_complete(onnx_file,  #it should be onnx_path, but since we skip the local execution and don't use splits, we pass the full model
+                                                                                          "NO_SPLIT", 
+                                                                                          image_file, 
+                                                                                          image_batch, 
+                                                                                          img_size_x, 
+                                                                                          img_size_y, 
+                                                                                          is_grayscale,
+                                                                                          platform,
+                                                                                          exec_provider,
+                                                                                          device_type,
+                                                                                          xml_file=xml_file) 
+        except Exception as e:
+          print("Error on executin RUN Complete cycle: " + str(e))  
+
+        print("Finished inference of the whole layer on the Cloud (OSCAR)..")
+        #cvswriter.writerow({'SplitLayer':"NO_SPLIT", "Time1":0, "Time2":t_2nd_inf, "Time3":t_oscar_job, "Time4":t_kube_pod})
+        cvswriter.writerow({"SplitLayer":"NO_SPLIT", "1stInfTime":0, "2ndInfTime":t_2nd_inf, "oscarJobTime":t_oscar_job, "kubePodTime":t_kube_pod,
+                            "tensorSaveTime":t_tensor_save, "tensorLoadTime":t_tensor_load, "tensorLength":tensor_lenght, "networkingTime":t_networking})
+        print("Saved results..")  
+
+        #Make a split for every layer in the model
+        ln = 0
+        for layer in enumerate_model_node_outputs(model_onnx):
+          #Ignore the first and the last layer
+          if layer != list(enumerate_model_node_outputs(model_onnx))[0] and layer != list(enumerate_model_node_outputs(model_onnx))[-1]:
+          #if layer != list(enumerate_model_node_outputs(model_onnx))[-1]:
+            splitLayer = layer.replace("/", '-').replace(":", '_')
+
+            #TODO:delete this when mobilenet_splittedmodels is updated on OSCAR
+            #if splitLayer == "sequential-mobilenetv2_1.00_160-Conv1-Conv2D__7426_0":
+            #  splitLayer = "sequential-mobilenetv2_1.00_160-Conv1-Conv2D__6_0"
+
+            print("Splitting at layer: " + splitLayer)
+
+            # Make a complete Inference Run of the whole model by splitting at this particular layer
+            print("Run..")
+            try:
+              (t_1st_inf, t_2nd_inf, t_oscar_job, t_kube_pod, 
+                tensor_lenght, t_tensor_save, t_tensor_load, t_networking) = onnx_run_complete(onnx_path, 
+                                                                                              splitLayer, 
+                                                                                              image_file, 
+                                                                                              image_batch, 
+                                                                                              img_size_x, 
+                                                                                              img_size_y, 
+                                                                                              is_grayscale,
+                                                                                              platform,
+                                                                                              exec_provider,
+                                                                                              device_type,
+                                                                                              xml_file=xml_file)
+            except Exception as e:
+              print("Error on executin RUN Complete cycle: " + str(e)) 
+
+            # t_1st_inf = 1st Inference Execution Time
+            # t_2nd_inf = 2nd Inference Execution Time
+            # t_oscar_job = 2nd Inf. OSCAR JOB Exec. Time
+            # t_kube_pod = 2nd Inf. Kubernetes POD Exec. Time
+            # tensor_lenght = 1st Inf. Tensor Length:
+            # t_tensor_save = 1st Inf. Tensor Save Time
+            # t_tensor_load = 2nd Inf. Tensor Load Time
+            if t_1st_inf != -1 and t_2nd_inf != -1 and t_oscar_job != -1 and t_kube_pod != -1:
+              print("Finished inference after splitting at layer: " + splitLayer)
+              #cvswriter.writerow({'SplitLayer':splitLayer, "Time1":t_1st_inf, "Time2":t_2nd_inf, "Time3":t_oscar_job, "Time4":t_kube_pod})
+              cvswriter.writerow({"SplitLayer":splitLayer, "1stInfTime":t_1st_inf, "2ndInfTime":t_2nd_inf, "oscarJobTime":t_oscar_job, "kubePodTime":t_kube_pod,
+                                  "tensorSaveTime":t_tensor_save, "tensorLoadTime":t_tensor_load, "tensorLength":tensor_lenght, "networkingTime":t_networking})
+              print("Saved results..")
+
+        #Save tensor dictionary 
+        with open("tensor_dict.pkl", "wb") as tf:
+          pickle.dump(dictTensors,tf)
+
+        #Load tensor dictionary 
+        with open("tensor_dict.pkl", "rb") as tf:
+          tensors = pickle.load(tf)
+
+        #Get the list of all the layers we need
+        #for OLD onnxruntime versions, we need the names of the nodes to be saved differently (attribute name instead of output from the onnx graph)
+        splitNodesCompatibility = []   
+        for layer, lnode in enumerate_model_node_outputs(model_onnx, add_node = True):
+          #Ignore the first and the last layer
+          if layer != list(enumerate_model_node_outputs(model_onnx))[0] and layer != list(enumerate_model_node_outputs(model_onnx))[-1]:
+            for dir in os.listdir(onnx_path):
+              if dir.find("_on_") > 0:
+                index = dir.index('_on_')
+                d = dir[index+4:]
+                if d == splitLayer:
+                  splitNodesCompatibility.append(lnode.name)
+
+        # Get the Inference Time of each layer (it can be also a sequence of nodes) by analyzing the profiling Table
+        if version.parse(onnxruntime.__version__) < version.parse("1.10.0"):
+          #for old onnxruntime versions, we need different names
+          dictSingleLayerInfProfiling = getSingleLayerExecutionTimeTable(model_onnx, splitNodesCompatibility, profilingTable)
+          #update keys with the node names that we need
+          splitNodes = list(dictTensors.keys())
+          for i in range(len(splitNodes)):
+            try:
+              dictSingleLayerInfProfiling[splitNodes[i]] = dictSingleLayerInfProfiling[splitNodesCompatibility[i]]
+              del dictSingleLayerInfProfiling[splitNodesCompatibility[i]]
+            except:
+              dictSingleLayerInfProfiling[splitNodes[i]] = 0
+        else:
+          dictSingleLayerInfProfiling = getSingleLayerExecutionTimeTable(model_onnx, list(dictTensors.keys()), profilingTable)
+
+        #Iterate through inputs of the graph and get operation types
+        dictOperations = {}
+        for node in model_onnx.graph.node:
+          name = node.output[0]
+          op_type = node.op_type
+          if name in dictTensors:
+            dictOperations[name] = op_type
+            #print (op_type)
+
+        #Now we split the layer in single blocks and run them individually in order to get the inference time per layer
+        onnx_model_split_all_singlenode(onnx_file, tensors)
+
+        #Run at inference all the single layer models generated and get the inference execution time and the Nr. of Parameters
+        layerTime = {}
+        dictNrParams = {}
+        dictFLOPS = {}
+        dictMACS = {}
+        dictMEMORY = {}
+        for layer in dictTensors:
+          #Ignore the first layer since it will be the input
+          #if True: #layer != list(dictTensors.keys())[0]:
+          if True: #layer not in onnx_get_true_inputs(model_onnx):
+            file = "SingleLayerSplits/"+layer.replace("/", '-').replace(":", '_')+'.onnx'
+
+            if os.path.exists(file):
+              #Get the Nr. of Parameters  #IT'S NOT ACCURATE
+              single_layer_model_onnx = load_onnx_model(file)
+              params = calculate_params(single_layer_model_onnx)
+              dictNrParams[layer] = params
+              #print('Number of params:', params)
+
+              #MACs & Nr. Parameters Profiling of the SingleLayerTime
+              modelpath = 'mobilenet_v2.onnx'
+              dynamicInputName = single_layer_model_onnx.graph.input[0].name
+              dynamicInputShape = dictTensors[layer].shape
+              dynamic_inputs= {dynamicInputName: create_ndarray_f32(dynamicInputShape)}
+              onnx_tool.model_profile(file, dynamic_inputs, savenode='single_node_table.csv')
+
+              #Get the data from the MACs & Nr. Parameters Profiling and SUM all the values (now directly get the total)
+              with open('single_node_table.csv', 'r', newline='') as csvfile:
+                reader = csv.reader(csvfile, delimiter=",")
+                for i, line in enumerate(reader):
+                  if line[0] == "Total":
+                    dictMACS[layer] = line[1]
+                    dictMEMORY[layer] = line[3]
+                    dictNrParams[layer] = line[5]
+              print(file + " MACS: " + str(dictMACS[layer]))
+              print(file + " MEMORY: " + str(dictMEMORY[layer]))
+              print(file + " NrParams: " + str(dictNrParams[layer]))
+
+              #For every model calc FLOPS
+              '''onnx_json = convert(
+                onnx_graph=single_layer_model_onnx.graph,
+              )'''
+              
+              #FLOPS CALCULATION IS NOT ACCURATE
+              onnx_json = convert(
+                input_onnx_file_path=file,
+                output_json_path="test.json",
+                json_indent=2,
+              )
+              dictNodeFLOPS = calc_flops(onnx_json, batchSize)
+              #Sum all the FLOPS of the nodes inside the Single Layer Model
+              dictFLOPS[layer] = 0
+              for node in dictNodeFLOPS:
+                dictFLOPS[layer] = dictFLOPS[layer] + dictNodeFLOPS[node]
+              print(file + " FLOPS: " + str(dictFLOPS[layer]))
+
+              #Execute at inference the whole model locally AND Use profiling (for now disabled)
+              try:
+                #t_inf = onnx_run_first_half(file, dictTensors[layer], False, exec_provider, device_type, profiling=False)["execTime1"] 
+                #t_inf = onnx_run_first_half(file, dictTensors[layer], False, CPU_EP_list, device_type, profiling=False)["execTime1"]  
+                inputData = dictTensors[layer]
+                #first inference is just to get the model loaded into ram
+                resData, _ = onnx_run_first_half(file, inputData, True, exec_provider, device_type, profiling=False, xml_file=xml_file)  
+                time.sleep(1)
+                #sencond inference with the same model is faster (mimicing a case whre we don't have to load the model in ram)
+                resData, _ = onnx_run_first_half(file, inputData, True, exec_provider, device_type, True, xml_file, True)  
+                t_inf = resData["execTime1"] 
+              except Exception as e:
+                print(e)
+              layerTime[layer] = t_inf
+              time.sleep(10) #it's only needed for OpenVINO, cuz NCS2 runs out of memory
+
+        #Save the inf times in a different csv file     
+        fieldnames2 = ['SplitLayer', 'singleLayerInfTime', 'OpType', 'NrParameters', 'Memory', 'MACs', 'singleLayerInfTimeProf']
+        cvswriter2 = csv.DictWriter(csvfile2, fieldnames=fieldnames2)
+        cvswriter2.writeheader()
+        cvswriter2.writerow({"SplitLayer":"NO_SPLIT", "singleLayerInfTime":0,"OpType":0, "NrParameters":0, 'Memory':0, 'MACs':0, "singleLayerInfTimeProf":0})
+        cvswriter2.writerow({"SplitLayer":"NO_SPLIT", "singleLayerInfTime":0,"OpType":0, "NrParameters":0, 'Memory':0, 'MACs':0, "singleLayerInfTimeProf":0})
+
+        #dictOperations was saved by using the name of the output node for each model, while
+        #layerTime, dictNrParams, dictFLOPS were saved by using the name of the input node for each model
+        index = 0
+        for layer in layerTime:
+          #Ignore the last layer name since layerTime was saved by using the name of the input node
+          if layer != list(layerTime.keys())[len(list(layerTime.keys()))-1]:
+            #Get next layer
+            nextLayer = list(layerTime.keys())[index+1]
+            try:
+              cvswriter2.writerow({"SplitLayer":nextLayer.replace("/", '-').replace(":", '_'), "singleLayerInfTime":layerTime[layer], 
+                                  "OpType":dictOperations[nextLayer], "NrParameters":dictNrParams[nextLayer], 'Memory': dictMEMORY[nextLayer], 'MACs':dictMACS[nextLayer],
+                                  "singleLayerInfTimeProf":dictSingleLayerInfProfiling[nextLayer]})
+            except Exception as e:
+              print(e)
+            index = index + 1
+
+  #Get the data from the first two cvs files
+  list1 = []
+  list2 = []
+  with open(RESULTS_CSV_FILE, 'r', newline='') as csvfile1:
+    reader = csv.reader(csvfile1, delimiter=",")
+    for i, line in enumerate(reader):
+      list1.append(line)
+  with open(RESULTS_CSV_FILE2, 'r', newline='') as csvfile2:
+    reader = csv.reader(csvfile2, delimiter=",")
+    for i, line in enumerate(reader):
+      list2.append(line)
+
+  #Calc the sum of all the time of execution of all the singleLayer models
+  singleLayerTimeSum = [0]*repetitions
+  rowsPerRepetition = int(len(list2)/repetitions)
+  for rep in range(0, repetitions):
+    startRow = int(rep*rowsPerRepetition + 1)
+    for i in range(startRow,startRow+rowsPerRepetition-1): 
+      singleLayerTimeSum[rep] = singleLayerTimeSum[rep] + float(list2[i][1])
+    print("Sum of the Single Layer Models time: " + str(singleLayerTimeSum[rep]) + " | rep: " + str(rep))
+
+
+  '''
+  names_list1 : 'SplitLayer', '1stInfTime', '2ndInfTime', 'oscarJobTime', 'kubePodTime', 'tensorSaveTime', 'tensorLoadTime', 'tensorLength', 'networkingTime'
+  names_list2 : 'SplitLayer', 'singleLayerInfTime', 'OpType', 'NrParameters', 'Memory', 'MACs', 'singleLayerInfTimeProf'
+  '''
+
+  #AVERAGE all the times
+  list1_avg = copy.deepcopy(list1)
+  list2_avg = copy.deepcopy(list2)
+  #SUM of all the elements
+  for i in range(1, rowsPerRepetition): 
+    list1_avg[i][1] = float(list1[i][1])   #1stInfTime
+    list1_avg[i][2] = float(list1[i][2])   #2ndInfTime
+    list1_avg[i][3] = float(list1[i][3])   #oscarJobTime
+    list1_avg[i][4] = float(list1[i][4])   #kubePodTime
+    list1_avg[i][5] = float(list1[i][5])   #tensorSaveTime
+    list1_avg[i][6] = float(list1[i][6])   #tensorLoadTime
+    list1_avg[i][8] = float(list1[i][8])   #networkingTime
+    #2nd list
+    list2_avg[i][1] = float(list2[i][1])   #singleLayerInfTime
+    list2_avg[i][6] = float(list2[i][6])   #singleLayerInfTimeProf
+
+    for rep in range(1, repetitions):
+      list1_avg[i][1] = float(list1_avg[i][1]) + float(list1[i+rep*(rowsPerRepetition)][1])   #1stInfTime
+      list1_avg[i][2] = float(list1_avg[i][2]) + float(list1[i+rep*(rowsPerRepetition)][2])   #2ndInfTime
+      list1_avg[i][3] = float(list1_avg[i][3]) + float(list1[i+rep*(rowsPerRepetition)][3])   #oscarJobTime
+      list1_avg[i][4] = float(list1_avg[i][4]) + float(list1[i+rep*(rowsPerRepetition)][4])   #kubePodTime
+      list1_avg[i][5] = float(list1_avg[i][5]) + float(list1[i+rep*(rowsPerRepetition)][5])   #tensorSaveTime
+      list1_avg[i][6] = float(list1_avg[i][6]) + float(list1[i+rep*(rowsPerRepetition)][6])   #tensorLoadTime
+      list1_avg[i][8] = float(list1_avg[i][8]) + float(list1[i+rep*(rowsPerRepetition)][8])   #networkingTime
+      #2nd list
+      list2_avg[i][1] = float(list2_avg[i][1]) + float(list2[i+rep*(rowsPerRepetition)][1])   #singleLayerInfTime
+      list2_avg[i][6] = float(list2_avg[i][5]) + float(list2[i+rep*(rowsPerRepetition)][6])   #singleLayerInfTimeProf
+  #AVG on reptetitions
+  for i in range(1, rowsPerRepetition): 
+    list1_avg[i][1] = str(list1_avg[i][1]/repetitions)   #1stInfTime
+    list1_avg[i][2] = str(list1_avg[i][2]/repetitions)   #2ndInfTime
+    list1_avg[i][3] = str(list1_avg[i][3]/repetitions)   #oscarJobTime
+    list1_avg[i][4] = str(list1_avg[i][4]/repetitions)   #kubePodTime
+    list1_avg[i][5] = str(list1_avg[i][5]/repetitions)   #tensorSaveTime
+    list1_avg[i][6] = str(list1_avg[i][6]/repetitions)   #tensorLoadTime
+    list1_avg[i][8] = str(list1_avg[i][8]/repetitions)   #networkingTime
+    #2nd list
+    list2_avg[i][1] = str(list2_avg[i][1]/repetitions)   #singleLayerInfTime
+    list2_avg[i][6] = str(list2_avg[i][6]/repetitions)   #singleLayerInfTimeProf
+
+  #Calculate ERROR on profiling data (InferenceError)
+  listInfError = [0]*(rowsPerRepetition+1)
+  for i in range(3, rowsPerRepetition): #starts from 3, because the first line is the header, while the next two are NO_SPLIT rows
+    #for each layer(row), calculate the sum of singleLayerInfTimeProf's until the current considered layer
+    sumLayerInfTimes = 0
+    for j in range(3, i+1): 
+      #sumLayerInfTimes = sumLayerInfTimes + float(list2_avg[j][5])    #error calculated on singleLayerInfTimeProf
+      sumLayerInfTimes = sumLayerInfTimes + float(list2_avg[j][1])    #error calculated on singleLayerInfTime
+    
+    #Now calculate the error compared to 1stInfTime
+    listInfError[i] = (sumLayerInfTimes - float(list1_avg[i][1])) / float(list1_avg[i][1])
+  
+  #Now get the Average InferenceError
+  avgInfError = 0
+  avgAbsInfError = 0
+  for i in range(3, rowsPerRepetition): 
+    avgInfError = avgInfError + listInfError[i]
+    avgAbsInfError = avgAbsInfError + np.abs(listInfError[i])
+  avgInfError = avgInfError / (rowsPerRepetition-2)
+  avgAbsInfError = avgAbsInfError / (rowsPerRepetition-2)
+
+  #Unite the two tables into a third cvs file
+  import math
+  with open(FINAL_RESULTS_CSV_FILE, 'w', newline='') as csvfile3:
+    fieldnames = ['SplitLayer', '1stInfTime', '2ndInfTime', 'oscarJobTime', 'kubePodTime', 'tensorSaveTime', 'tensorLoadTime', 'tensorLength', 
+                  'networkingTime', 'singleLayerInfTime', 'OpType', 'NrParameters', 'Memory', 'MACs', 'SingleLayerSum-Splitted', "singleLayerInfTimeProf"]
+    cvswriter = csv.DictWriter(csvfile3, fieldnames=fieldnames)
+    cvswriter.writeheader()
+
+    for i in range(1,len(list1)): 
+      if i % rowsPerRepetition == 0:
+        cvswriter.writeheader()
+      else:
+        cvswriter.writerow({"SplitLayer":list1[i][0], "1stInfTime":list1[i][1], "2ndInfTime":list1[i][2], "oscarJobTime":list1[i][3], "kubePodTime":list1[i][4],
+                          "tensorSaveTime":list1[i][5], "tensorLoadTime":list1[i][6], "tensorLength":list1[i][7], "networkingTime":list1[i][8], 
+                          "singleLayerInfTime":list2[i][1], "OpType":list2[i][2], "NrParameters":list2[i][3], "Memory":list2[i][4], "MACs":list2[i][5],
+                          "SingleLayerSum-Splitted": str(singleLayerTimeSum[math.floor(i/rowsPerRepetition)] - (float(list1[i][1]) + float(list1[i][2]))),
+                          "singleLayerInfTimeProf": list2[i][6]})
+
+  #Unite the two tables into a fourth cvs file, averaging the time measurements
+  import math
+  with open(AVG_RESULTS_CSV_FILE, 'w', newline='') as csvfile3:
+    fieldnames = ['SplitLayer', '1stInfTime', '2ndInfTime', 'oscarJobTime', 'kubePodTime', 'tensorSaveTime', 'tensorLoadTime', 'tensorLength', 
+                  'networkingTime', 'singleLayerInfTime', 'OpType', 'NrParameters', 'Memory', 'MACs', 'singleLayerInfTimeProf',
+                  'InferenceError', 'AbsInferenceError', 'AvgError', 'AvgAbsError']
+    cvswriter = csv.DictWriter(csvfile3, fieldnames=fieldnames)
+    cvswriter.writeheader()
+
+    for i in range(1, rowsPerRepetition): 
+      cvswriter.writerow({"SplitLayer":list1[i][0], "1stInfTime":list1_avg[i][1], "2ndInfTime":list1_avg[i][2], "oscarJobTime":list1_avg[i][3], "kubePodTime":list1_avg[i][4],
+                          "tensorSaveTime":list1_avg[i][5], "tensorLoadTime":list1_avg[i][6], "tensorLength":list1[i][7], "networkingTime":list1_avg[i][8], 
+                          "singleLayerInfTime":list2_avg[i][1], "OpType":list2[i][2], "NrParameters":list2[i][3], "Memory":list2[i][4], "MACs":list2[i][5],
+                          "singleLayerInfTimeProf": list2_avg[i][6], "InferenceError": str(listInfError[i]), "AbsInferenceError": str(np.abs(listInfError[i])), 
+                          "AvgError": str(avgInfError) if i==1 else '', "AvgAbsError": str(avgAbsInfError) if i==1 else ''})
+
+  print("Plotting the results..")
+  plot_results(AVG_RESULTS_CSV_FILE)
+
+def getSingleLayerExecutionTimeTable(model_onnx, splitNodes, profilingTable):
+  '''
+  Get a Dictionary with the SingleLayersInference Time values (for each layer we have splitted the main model) based on the 
+  data we got from onnxruntime Profiling of the whole onnx model.
+  
+  :param model_onnx: the imported full onnx model
+  :param splitNodes: the list of all the layers we have splitted the main model
+  :param profilingTable: the Profiling Table
+  :returns: a dictionary with the split layers names as keys and inference time calculated as value
+  '''
+  dictSingleLayerInfProfiling = {}
+  dictTensorLengths = {}
+  prevNode = ""
+
+  #Iterate through the nodes where we have splitted the model
+  for node in splitNodes:
+    closestNode = getClosestNodeInProfilingTable(model_onnx, profilingTable, node)
+    if closestNode != "":
+      print(closestNode)
+      #Get SingleLayerInference time
+      dictSingleLayerInfProfiling[node] = getInfTimeBetweenNodes(profilingTable, prevNode, closestNode)/1000000
+
+      prevNode = closestNode
+    else:
+      dictSingleLayerInfProfiling[node] = 0
+  
+  return dictSingleLayerInfProfiling
+
+def getNextNode(model_onnx, currentNode):
+  '''
+  Get the name of the node that comes immediatly after the one passed as function argument.
+  
+  :param model_onnx: the imported full onnx model
+  :param currentNode: the node we consider from the model
+  :returns: the name next node
+  '''
+  prevNode = ""
+  for n in model_onnx.graph.node:
+    node = n.output[0]
+    if prevNode == currentNode:
+      return node
+
+    prevNode = node
+  return ""
+
+def isNodeInProfilingTable(profilingTable, node):
+  '''
+  Get the closest Node in the Profiling Table to the node specified (which is one of the nodes used for slitting the model)
+  
+  :param profilingTable: the Profiling Table
+  :param nodes: a node of the model
+  :returns: True if the node is present, False otherwise
+  '''
+  for i in range(0, len(profilingTable)):
+      #if reatched the destination node
+      if node in profilingTable[i]["name"]:
+        return True
+      # for older versions of onnxruntime
+      elif ":0" in node:
+          if node[:-2] in profilingTable[i]["name"]:
+            return True
+  return False
+
+def getClosestNodeInProfilingTable(model_onnx, profilingTable, node):
+  '''
+  Get the closest Node in the Profiling Table to the node specified (which is one of the nodes used for slitting the model).
+  This research will only search two nodes deep!
+  
+  :param model_onnx: the imported full onnx model
+  :param profilingTable: the Profiling Table
+  :param nodes: one of the nodes used for slitting the model
+  :returns: the name of the closest node in the ProfilingTable
+  '''
+  #is the node already present in the profiling table?
+  if isNodeInProfilingTable(profilingTable, node):
+    return node
+  else:
+    #try the next node in the model
+    nextNode = getNextNode(model_onnx, node)
+    if nextNode != "":
+      if isNodeInProfilingTable(profilingTable, nextNode):
+        return nextNode
+      else:
+        #try the next next node in the model
+        nextNextNode = getNextNode(model_onnx, nextNode)
+        if nextNextNode != "":
+          if isNodeInProfilingTable(profilingTable, nextNextNode):
+            return nextNextNode
+  return ""
+
+def getInfTimeBetweenNodes(profilingTable, startNode, endNode):
+  '''
+  Get the sum of inference time values from a starting node to an ending node (excluded) from the profiling table.
+  If the starting node is the empty string, then start from the beging with the first node in the ProfilingTable.
+  
+  :param profilingTable: the Profiling Table
+  :param startNode: the staring node considered
+  :param endNode: the last node considered (excluded)
+  :returns: the inference time value in micro seconds
+  '''
+  infTime = 0
+
+  #from the begining
+  if startNode == "":
+    for i in range(2, len(profilingTable)):     #ignore the first two, beacuse they are session instances instead of code node execution
+      #if reatched the destination node
+      if endNode in profilingTable[i]["name"]:
+        return infTime
+      else:
+        infTime = infTime + profilingTable[i]["dur"]
+  else:
+    startIndex = 0
+    #find starting index
+    for i in range(0, len(profilingTable)):
+      #if reatched the destination node
+      if startNode in profilingTable[i]["name"]:
+        startIndex = i
+        break
+
+    for i in range(startIndex, len(profilingTable)):
+      #if reatched the destination node
+      if endNode in profilingTable[i]["name"]:
+        return infTime
+      else:
+        infTime = infTime + profilingTable[i]["dur"]
+
+  return 0
 
 
