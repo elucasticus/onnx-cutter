@@ -5,11 +5,15 @@ import numpy as np
 
 app = Flask(__name__)
 
+@app.route("/")
+def root():
+    return "<h1>Hello There</h1>"
+
 @app.route("/status")
 def return_server_status():
     return "<h1>Operational</h1>"
 
-@app.route("/test", methods=["POST", "GET"])
+@app.route("/onnx", methods=["POST", "GET"])
 def test():
     data = request.json
     arrival_time = time.time()
