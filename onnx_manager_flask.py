@@ -102,7 +102,6 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
         data["splitLayer"] = "PROFILING"
 
       #Save the first input tensor (input)
-      tensor_key = model_onnx.graph.input[0].name
       dictTensors[model_onnx.graph.input[0].name] = inputData    #"first" won't be recognized, use the input of the model
 
       # Save the Tensor on a file
@@ -116,7 +115,6 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
 
       #Save the Intermediate Tensors
       print("Saving the intermediate tensor...")
-      tensor_key = resData["splitLayer"]
       dictTensors[resData["splitLayer"]] = resData["result"]
       data = resData
     
