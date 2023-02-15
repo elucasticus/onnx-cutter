@@ -139,6 +139,12 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
     print("#### 1st Inf. Tensor Save Time: " + str(response["tensorSaveTime"]) + " s")
     print("#### Networking Time: " + str(uploading_time) + " s")
     print("#### 2nd Inf. Tensor Load Time: " + str(response["tensorLoadTime"]) + " s")
+
+    if split_layer == "PROFILING":
+      return response["execTime1"], response["execTime2"], response["tensorLength"], response["tensorSaveTime"], response["tensorLoadTime"], uploading_time, response["profilingTableCloud"]
+    else: 
+      return response["execTime1"], response["execTime2"], response["tensorLength"], response["tensorSaveTime"], response["tensorLoadTime"], uploading_time
+  return -1,-1,-1,-1,-1,-1
     
 
 
