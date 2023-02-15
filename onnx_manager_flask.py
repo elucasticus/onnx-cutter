@@ -132,14 +132,13 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
     print("uploading_time: %f" %uploading_time)
 
     #Print the results
-    data = response["returnData"]
-    print("\n ####1st Inference Execution Time: " + str(data["execTime1"]) + "sec")
-    print("\n ####2nd Inference Execution Time: " + str(data["execTime2"]) + "sec")
-    print("\n ---------------------------------------------------")
-    print("\n ####Tensor Length: " + str(data["tensorLength"]))
-    print("\n ####1st Inf. Tensor Save Time: " + str(data["tensorSaveTime"]) + "sec")
-    print("\n ####Networking Time: " + str(uploading_time))
-    print("\n ####2nd Inf. Tensor Load Time: " + str(data["tensorLoadTime"]) + "sec")
+    print("#### 1st Inference Execution Time: " + str(response["execTime1"]) + " s")
+    print("#### 2nd Inference Execution Time: " + str(response["execTime2"]) + " s")
+    print("---------------------------------------------------")
+    print("#### Tensor Length: " + str(response["tensorLength"]))
+    print("#### 1st Inf. Tensor Save Time: " + str(response["tensorSaveTime"]) + " s")
+    print("#### Networking Time: " + str(uploading_time) + " s")
+    print("#### 2nd Inf. Tensor Load Time: " + str(response["tensorLoadTime"]) + " s")
     
 
 

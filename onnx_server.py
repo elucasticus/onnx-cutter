@@ -14,5 +14,8 @@ def test():
     arrival_time = time.time()
     onnx_path = "cifar10"
     returnData = onnx_search_and_run_second_half(onnx_path, None, data, None, "CPU", "CPU_FP64")
-    return {"Outcome": "Success", "arrival_time": arrival_time, "returnData": returnData}
+    returnData["Outcome"] = "Success"
+    returnData["arrival_time"] = arrival_time
+    returnData["result"] = returnData["result"].tolist()
+    return returnData
 

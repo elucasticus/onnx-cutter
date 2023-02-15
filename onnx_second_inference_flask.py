@@ -133,10 +133,10 @@ def onnx_search_and_run_second_half(onnx_models_path, onnx_model_file, data, res
       pickle.dump(dictData, f)
 
   # Convert into JSON:
-  returnData = json.dumps(dictData, cls=NumpyArrayEncoder)
+  # returnData = json.dumps(dictData, cls=NumpyArrayEncoder)
 
-  print(returnData)
-  return returnData
+  # print(returnData)
+  return dictData
 
 class NumpyArrayEncoder(JSONEncoder):
     def default(self, obj):
