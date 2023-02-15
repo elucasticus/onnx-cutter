@@ -1,5 +1,6 @@
 from flask import Flask, request
 import time
+from onnx_second_inference_flask import onnx_search_and_run_second_half
 
 app = Flask(__name__)
 
@@ -11,7 +12,7 @@ def return_server_status():
 def test():
     data = request.json
     arrival_time = time.time()
-    x = data["x"]
-    print(x)
-    return {"Outcome": "Success", "arrival_time": arrival_time}
+    onnx_path = "cifar10"
+    returnData = onnx_search_and_run_second_half(onnx_path, None, data, None, "CPU", "CPU_FP64")
+    return {"Outcome": "Success", "arrival_time": arrival_time, "returnData": returnData}
 

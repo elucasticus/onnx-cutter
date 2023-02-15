@@ -118,15 +118,28 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
       print("Saving the intermediate tensor...")
       tensor_key = resData["splitLayer"]
       dictTensors[resData["splitLayer"]] = resData["result"]
+      data = resData
     
+    data["result"] = data["result"].tolist()
     #Send the Intermediate Tensors to the server
     print("Sending the intermediate tensors to the server...")
     departure_time = time.time()
-    data = {'x': dictTensors[tensor_key].tolist()}
     response = requests.post("http://127.0.0.1:5000/test", json=data).json()
+
+    #Compute uploading time
     arrival_time = response["arrival_time"]
     uploading_time = arrival_time - departure_time
-    print(uploading_time)
+    print("uploading_time: %f" %uploading_time)
 
+    #Print the results
+    data = response["returnData"]
+    print("\n ####1st Inference Execution Time: " + str(data["execTime1"]) + "sec")
+    print("\n ####2nd Inference Execution Time: " + str(data["execTime2"]) + "sec")
+    print("\n ---------------------------------------------------")
+    print("\n ####Tensor Length: " + str(data["tensorLength"]))
+    print("\n ####1st Inf. Tensor Save Time: " + str(data["tensorSaveTime"]) + "sec")
+    print("\n ####Networking Time: " + str(uploading_time))
+    print("\n ####2nd Inf. Tensor Load Time: " + str(data["tensorLoadTime"]) + "sec")
+    
 
 
