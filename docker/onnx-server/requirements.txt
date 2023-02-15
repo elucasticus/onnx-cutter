@@ -1,0 +1,13 @@
+Flask==2.2.2
+matplotlib==3.6.2
+numpy==1.24.1
+onnx2json==2.0.4
+onnx_opcounter==0.0.3
+onnx_tool==0.6.0
+onnxruntime==1.13.1
+packaging==23.0
+pandas==1.5.3
+requests==2.28.1
+skl2onnx==1.13
+SQLAlchemy==1.4.44
+tensorflow==2.11.0
