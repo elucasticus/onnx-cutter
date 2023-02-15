@@ -31,6 +31,241 @@ from onnx_tool import create_ndarray_f32
 #Dependencies for flask
 import requests
 
+# Prefer ACL Execution Provider over CPU Execution Provider
+ACL_EP_list       = ['ACLExecutionProvider']
+# Prefer OpenVINO Execution Provider over CPU Execution Provider
+TensorRT_EP_list  = ['TensorrtExecutionProvider']
+# Prefer OpenVINO Execution Provider over CPU Execution Provider
+OpenVINO_EP_list  = ['OpenVINOExecutionProvider']
+# Prefer CUDA Execution Provider over CPU Execution Provider
+GPU_EP_list       = ['CUDAExecutionProvider']
+# Prefer CPU Execution Provider
+CPU_EP_list       = ['CPUExecutionProvider']
+
+# TESTING
+dictTensors = {} 
+
+def main():
+  '''
+    Manages operations on ONNX DNN Models such as layer visualizzation and splitting.
+
+    Arguments:
+    -h, --help            Show this help message and exit
+    --operation OPERATION
+                          Select the operation to be performed on the ONNX Model
+                          (list_layers | print_model | split_model | split_model_all | multi_split_model | early_exit_split_model | data_processing | 
+                           run | run_all | run_profiler | plot_results | quant_model | show_graph)
+    --onnx_file ONNX_FILE                       Select the ONNX File
+    --split_layer SPLIT_LAYER                   Select the layer where the slit must take place on the ONNX Model
+    --split_layers SPLIT_LAYERS                 Select the list of layers where the slit must take place on the ONNX Model
+    --outputs OUTPUTS                           Select the output and the early exits where the slit must take place on the ONNX Model (the actual split will take place above the early exit)
+    --onnx_path ONNX_PATH                       Select the path were all the Splitted ONNX Models are stored
+    --image_file IMAGE_FILE                     Select the Image File
+    --image_file IMAGE_BATCH                    Select the Image Folder containing the Batch of images
+    --image_size_x IMAGE_SIZE_X                 Select the Image Size X
+    --image_size_y IMAGE_SIZE_Y                 Select the Image Size Y
+    --image_is_grayscale IMAGE_IS_GRAYSCALE     Indicate if the Image is in grayscale
+    --results_file RESULTS_FILE                 Select the Results File(.csv)
+    --quant_type QUANT_TYPE                     Choose weight type used during model quantization
+                                                Dependencies: https://www.tensorflow.org/install/source#gpu
+    --platform PLATFORM                         Choose the platform where RUN_ALL/RUN is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
+                                Requirements for GPU: https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements
+    --device_type Device_TYPE   Select DeviceType
+    --exec_type EXEC_TYPE                       Select Execution Provider at inference: CPU (default) | GPU | OpenVINO | TensorRT | ACL
+                                'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'MYRIAD_FP16', 'VAD-M_FP16', 'VAD-F_FP32',
+                                Options are: (Any hardware target can be assigned if you have the access to it)
+                                'HETERO:MYRIAD,CPU',  'MULTI:MYRIAD,GPU,CPU'
+    --rep REP                                   Number of repetitions
+  '''
+  parser=argparse.ArgumentParser(
+    description='''
+ONNX Manager: Manages operations on ONNX DNN Models such as: 
+  - the execution of the complete cycle edge-cloud;
+  - the creation of splitted models;
+  - model layer visualizzation;
+  - data processing (of images or batches); 
+  - the quantization of models;
+  - plotting of results;
+  - showing the graph on ONNX Models
+    ''',
+    epilog='''
+Examples:
+> python onnx_manager.py --operation run --split_layer sequential/dense_1/MatMul:0 
+                         --onnx_path LENET_SplittedModels/ --image_file=images/mnist_test.jpg 
+                         --image_size_x=32 --image_size_y=32 --image_is_grayscale=True
+> python onnx_manager.py --operation run_all --onnx_file lenet.onnx --onnx_path LENET_SplittedModels/ 
+                         --image_file=images/mnist_test.jpg --image_size_x=32 --image_size_y=32 --image_is_grayscale=True
+
+> python onnx_manager.py --operation list_layers --onnx_file mobilenet_v2.onnx
+> python onnx_manager.py --operation split_model --onnx_file mobilenet_v2.onnx 
+                         --split_layer sequential/mobilenetv2_1.00_160/block_3_project_BN/FusedBatchNormV3:0
+
+> python onnx_manager.py --operation run --split_layer sequential/mobilenetv2_1.00_160/block_5_add/add:0 
+                         --onnx_path MobileNetV2_SplittedModles 
+                         --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
+                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False --minio_bucket=onnx-test-mobilenet 
+                         --oscar_service=onnx-test-mobilenet
+> python onnx_manager.py --operation run --split_layer sequential/mobilenetv2_1.00_160/block_5_add/add:0 
+                         --onnx_path MobileNetV2_SplittedModles --image_batch=images/mobilenet_batch 
+                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
+                         --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
+
+> python onnx_manager.py --operation run_all --onnx_file mobilenet_v2.onnx --onnx_path MobileNetV2_SplittedModles 
+                         --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
+                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
+                         --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
+> python onnx_manager.py --operation run_all --onnx_file mobilenet_v2.onnx --onnx_path MobileNetV2_SplittedModles 
+                         --image_file=images/mobilenet_batch --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
+                         --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
+
+> python onnx_manager.py --operation data_processing --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
+                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False
+    ''',
+    formatter_class=argparse.RawTextHelpFormatter
+  )
+  parser.add_argument('--operation', help='Select the operation to be performed on the ONNX Model',
+                      choices=['list_layers', 'print_model', 'split_model', 'split_model_all', 'multi_split_model', 'early_exit_split_model',
+                               'data_processing', 'run', 'run_all', 'run_profiler', 'plot_results', 'quant_model', 'show_graph',
+                               'prep_ml_dataset', 'prediction_profiling'])
+  parser.add_argument('--onnx_file', help='Select the ONNX File')
+  parser.add_argument('--xml_file', help='Select the XML File (OpenVINO Optimized Model)')
+  parser.add_argument('--split_layer', help='Select the layer where the slit must take place on the ONNX Model')
+  parser.add_argument('--split_layers', help='Select the list of layers where the slit must take place on the ONNX Model', 
+                                        dest='split_layers', type=str, nargs='+')
+  parser.add_argument('--outputs',  help='Select the output and the early exits where the slit must take place on the ONNX Model (the actual split will take place above the early exit)', 
+                                    dest='outputs', type=str, nargs='+')
+  parser.add_argument('--onnx_path', help='Select the path were all the Splitted ONNX Models are stored')
+  parser.add_argument('--image_file', help='Select the Image File')
+  parser.add_argument('--image_batch', help='Select the Image Folder containing the Batch of images')
+  parser.add_argument('--image_size_x', help='Select the Image Size X')
+  parser.add_argument('--image_size_y', help='Select the Image Size Y')
+  parser.add_argument('--image_is_grayscale', help='Indicate if the Image is in grayscale')
+  parser.add_argument('--results_file', help='Select the Results File(.csv)')
+  parser.add_argument("--platform", help='Choose the platform where RUN_ALL/RUN is executed, in order to use the right client for MinIO, OSCAR and Kubernetes', 
+                      choices=['AMD64', 'ARM64'])
+  parser.add_argument('--exec_type', help='Select Execution Provider at inference', choices=['CPU', 'GPU', 'OpenVINO', 'TensorRT', 'ACL'])
+  parser.add_argument('--device_type', help='Select DeviceType: (CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, \
+                                             HETERO:MYRIAD,CPU,  MULTI:MYRIAD,GPU,CPU)')
+  parser.add_argument("--rep", help='Number of repetitions', type=int)
+  parser.add_argument('--warmup_time', help='Set a Warmup Time[sec] (default: 60=1m), to run before the execution of the RUN ALL Cycle')
+  parser.add_argument('--input_csv_file', help='Select the Input File(.csv)')
+  parser.add_argument('--input_avg_csv_file', help='Select the Average Input File(.csv)')
+  parser.add_argument('--filter_layers', nargs='+', help='Specify an array of LayerNames to be filtered.')
+  parser.add_argument('--filter_nr_nodes', help='Specify the maximum Nr of Nodes per Split to be filtered.')
+  args=parser.parse_args()
+  print ("Operation: " + args.operation)
+
+  #Get Execution Provider
+  exec_provider = None
+  if args.exec_type == "ACL":
+    exec_provider = ACL_EP_list
+  if args.exec_type == "TensorRT":
+    exec_provider = TensorRT_EP_list
+  elif args.exec_type == "OpenVINO":
+    exec_provider = OpenVINO_EP_list
+  elif args.exec_type == "GPU":
+    exec_provider = GPU_EP_list
+  else:
+    exec_provider = CPU_EP_list
+
+  #Choose the operation
+  if args.operation == "list_layers":
+      onnx_list_model_layers(args.onnx_file)
+  elif args.operation == "print_layers":
+      onnx_model_details(args.onnx_file)
+  elif args.operation == "split_model":
+      onnx_model_split(args.onnx_file, args.split_layer)
+  elif args.operation == "split_model_all":
+      onnx_model_split_all(args.onnx_file)
+  elif args.operation == "multi_split_model":
+      onnx_model_multi_split(args.onnx_file, args.split_layers)
+  elif args.operation == "early_exit_split_model":
+      onnx_model_early_exits_split(args.onnx_file, args.outputs)
+  elif args.operation == "data_processing":
+      onnx_import_data(args.image_file, 
+                            args.image_batch,
+                            int(args.image_size_x), 
+                            int(args.image_size_y), 
+                            args.image_is_grayscale == "True")
+  elif args.operation == "run":
+      onnx_run_complete(args.onnx_path, 
+                        args.split_layer, 
+                        args.image_file, 
+                        args.image_batch,
+                        int(args.image_size_x), 
+                        int(args.image_size_y), 
+                        args.image_is_grayscale == "True",
+                        args.minio_bucket,
+                        args.oscar_service,
+                        args.kube_namespace,
+                        args.platform,
+                        exec_provider,
+                        args.device_type,
+                        args.xml_file)
+  elif args.operation == "run_all":
+      onnx_run_all_complete(args.onnx_file, 
+                            args.onnx_path, 
+                            args.image_file, 
+                            args.image_batch,
+                            int(args.image_size_x), 
+                            int(args.image_size_y), 
+                            args.image_is_grayscale == "True",
+                            args.minio_bucket,
+                            args.oscar_service,
+                            args.kube_namespace,
+                            args.platform,
+                            args.rep,
+                            exec_provider,
+                            args.device_type,
+                            args.xml_file,
+                            args.warmup_time)
+  elif args.operation == "run_profiler":
+      onnx_run_profiler(args.onnx_file, 
+                        args.onnx_path, 
+                        args.image_file, 
+                        args.image_batch,
+                        int(args.image_size_x), 
+                        int(args.image_size_y), 
+                        args.image_is_grayscale == "True",
+                        args.minio_bucket,
+                        args.oscar_service,
+                        args.kube_namespace,
+                        args.platform,
+                        args.rep,
+                        exec_provider,
+                        args.device_type,
+                        args.xml_file)
+  elif args.operation == "plot_results":
+      plot_results(args.results_file)
+  elif args.operation == "quant_model":
+      quantize_dynamic(args.onnx_file, 'quant_'+args.onnx_file, weight_type=args.quant_type)
+  elif args.operation == "show_graph":
+      onnx_show_graph(args.onnx_file)
+  elif args.operation == "prep_ml_dataset":
+      prepare_ml_dataset(args.input_csv_file, args.results_file, args.filter_layers, args.filter_nr_nodes)
+  elif args.operation == "prediction_profiling":
+      predictionProfiling(args.input_csv_file, args.input_avg_csv_file, args.results_file)
+
+
+def onnx_list_model_layers(onnx_file):
+  '''
+  List all the layers of an ONNX DNN Model
+
+  :param onnx_file: the ONNX file to analize
+  '''
+  model_onnx = load_onnx_model(onnx_file)
+  for out in enumerate_model_node_outputs(model_onnx):
+      print(out)
+
+def onnx_model_details(onnx_file):
+  '''
+  Print the details of an ONNX DNN Model
+
+  :param onnx_file: the ONNX file to analize
+  '''
+  onnx_model = onnx.load(onnx_file)
+  print(onnx_model)
+
 def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
                       platform, exec_provider, device_type, xml_file=None):
   '''
@@ -150,8 +385,8 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
                           device_type, xml_file = None, warmupTime = None):
   '''
   Run a complete cycle of inference for every splitted pair of models in the folder passed as argument, save the results in a CSV File and Plot the results.
-  To run a complete cycle means to run the first half of the model locally, get the results, load them on the cloud(minio) and then schedule 
-  the second part of the model on the cloud(OSCAR) and get the results.
+  To run a complete cycle means to run the first half of the model locally, get the results, load them on the cloud, execute 
+  the second part of the model on the cloud and get the results.
 
   :param onnx_file: the full unsplitted ONNX file (used to gather useful information)
   :param onnx_path: the path to the collection of models were to find the correct one to use for the inference
@@ -174,7 +409,7 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
 
   #TESTING
   global dictTensors
-  dictTensors = {}
+  #dictTensors = {}
 
   #Load the Onnx Model
   model_onnx = load_onnx_model(onnx_file)
@@ -555,8 +790,186 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
                           "singleLayerInfTimeProf": list2_avg[i][6], "InferenceError": str(listInfError[i]), "AbsInferenceError": str(np.abs(listInfError[i])), 
                           "AvgError": str(avgInfError) if i==1 else '', "AvgAbsError": str(avgAbsInfError) if i==1 else ''})
 
-  print("Plotting the results..")
-  plot_results(AVG_RESULTS_CSV_FILE)
+  #TESTING
+  #print("Plotting the results..")
+  #plot_results(AVG_RESULTS_CSV_FILE)
+
+def onnx_run_profiler(onnx_file, onnx_path, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
+                          platform, repetitions, exec_provider, device_type, xml_file = None):
+  '''
+  Run with the (onnxruntime)profiling function the full onnx model on both Edge and Cloud and profile the execution times layer by layer as well as
+  all the other data such as FLOPS, Nr. of Operations ecc..
+
+  :param onnx_file: the full unsplitted ONNX file (used to gather usefull information)
+  :param onnx_path: the path to the collection of models were to find the correct one to use for the inference
+  :param image_file: the path to the image if using a single image
+  :param image_batch: the path to the folder containing the batch of images if using a batch
+  :param img_size_x: the horrizontal size of the images
+  :param img_size_y: the vertical size of the images
+  :param is_grayscale: true if the image is grayscale, false otherwise
+  :param repetition: specifies the number of repetitions to execute
+  :param exec_provider: the Execution Provider used at inference (CPU (default) | GPU | OpenVINO | TensorRT | ACL)
+  :param device: specifies the device type such as 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', etc..
+  :param platform: the platform where the script is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
+  '''
+  #Default Argument Values
+  if is_grayscale == None: is_grayscale = False
+  if platform == None: platform = "AMD64"
+  if repetitions == None: repetitions = 1
+
+  #Load the Onnx Model
+  model_onnx = load_onnx_model(onnx_file)
+
+  # Process input data (image or batch of images)
+  inputData = data_processing(image_file, image_batch, img_size_x, img_size_y, is_grayscale, model_onnx.graph.input[0])
+  batchSize = inputData.shape[0]
+
+  # Run the model on Edge
+  # Process and get the ProfiligTable by running at inference the full model (A WARMUP execution is also performed before)
+  print("Warmup inference (Edge)..")
+  resData, _ = onnx_run_first_half(onnx_file, inputData, True, exec_provider, device_type, profiling=True, xml_file=xml_file)
+  print("Run the inference of the whole layer locally (Edge)..")
+  resDataEdge, profilingTableEdge = onnx_run_first_half(onnx_file, inputData, True, exec_provider, device_type, profiling=True, xml_file=xml_file)
+  print("Finished inference of the whole layer locally (Edge)!")
+  profilingTableCloud = None
+
+  #Execute at inference the whole model on the Cloud
+  try:
+    (t_1st_inf, t_2nd_inf, t_oscar_job, t_kube_pod, tensor_lenght, 
+     t_tensor_save, t_tensor_load, t_networking, profilingTableCloud) = onnx_run_complete(onnx_file,  #it should be onnx_path, but since we skip the local execution and don't use splits, we pass the full model
+                                                                                        "PROFILING", 
+                                                                                        image_file, 
+                                                                                        image_batch, 
+                                                                                        img_size_x, 
+                                                                                        img_size_y, 
+                                                                                        is_grayscale,
+                                                                                        platform,
+                                                                                        exec_provider,
+                                                                                        device_type,
+                                                                                        xml_file=None) 
+  except Exception as e:
+    print("Error on executin RUN Complete(Profiling) cycle: " + str(e))  
+  finally:
+    print("Finished inference (with Profiling) of the whole layer on the Cloud (OSCAR)..")
+
+  #Get the list of all the layers we need (the ones that are used for making the splits)
+  splitNodes = []
+  splitNodesCompatibility = []    #for OLD onnxruntime versions, we need the names of the nodes to be saved differently (attribute name instead of output from the onnx graph)
+  for layer, lnode in enumerate_model_node_outputs(model_onnx, add_node = True):
+    #Ignore the first and the last layer
+    if layer != list(enumerate_model_node_outputs(model_onnx))[0] and layer != list(enumerate_model_node_outputs(model_onnx))[-1]:
+      splitLayer = layer.replace("/", '-').replace(":", '_')
+      print("Search for: " + splitLayer)
+      for dir in os.listdir(onnx_path):
+        if dir.find("_on_") > 0:
+          index = dir.index('_on_')
+          d = dir[index+4:]
+          #print("Check: " + d)
+          if d == splitLayer:
+            print("Found Layer: " + d)
+            splitNodes.append(layer)
+            splitNodesCompatibility.append(lnode.name)
+
+  # Get the Inference Time of each layer (it can be also a sequence of nodes) by analyzing the profiling Table - Edge & Cloud
+  if version.parse(onnxruntime.__version__) < version.parse("1.10.0"):
+    #for old onnxruntime versions, we need different names
+    dictSingleLayerInfProfilingEdge = getSingleLayerExecutionTimeTable(model_onnx, splitNodesCompatibility, profilingTableEdge)
+    #update keys with the node names that we need
+    for i in range(len(splitNodes)):
+      dictSingleLayerInfProfilingEdge[splitNodes[i]] = dictSingleLayerInfProfilingEdge[splitNodesCompatibility[i]]
+      del dictSingleLayerInfProfilingEdge[splitNodesCompatibility[i]]
+  else:
+    dictSingleLayerInfProfilingEdge = getSingleLayerExecutionTimeTable(model_onnx, splitNodes, profilingTableEdge)
+  dictSingleLayerInfProfilingCloud = getSingleLayerExecutionTimeTable(model_onnx, splitNodes, profilingTableCloud)
+      
+  #Iterate through inputs of the graph and get operation types
+  dictOperations = {}
+  for node in model_onnx.graph.node:
+    name = node.output[0]
+    op_type = node.op_type
+    if name in splitNodes:
+      # Get OperationType
+      dictOperations[name] = op_type 
+
+  #get output tensor at each layer:
+  #https://github.com/microsoft/onnxruntime/issues/1455
+
+  # add all intermediate outputs to onnx net
+  ort_session = onnxruntime.InferenceSession(onnx_file)
+  org_outputs = [x.name for x in ort_session.get_outputs()]
+
+  model = onnx.load(onnx_file)
+  for node in model.graph.node:
+      for output in node.output:
+          if output not in org_outputs:
+              model.graph.output.extend([onnx.ValueInfoProto(name=output)])
+
+  # excute onnx
+  ort_session = onnxruntime.InferenceSession(model.SerializeToString())
+  outputs = [x.name for x in ort_session.get_outputs()]
+  #in_img = np.fromfile('<you path>/input_img.raw', dtype=np.float32).reshape(1,3,511,511)
+  inputs = onnx_get_true_inputs(model_onnx)
+  ort_outs = ort_session.run(outputs, {str(inputs[0]): inputData} )        
+  from collections import OrderedDict
+  ort_outs = OrderedDict(zip(outputs, ort_outs))
+
+  dictTensorLength = {}
+  dictNrFilters = {}
+  for layer in splitNodes:
+    shape = ort_outs[layer].shape
+    if len(shape) == 4:
+      dictTensorLength[layer] = shape[0]*shape[1]*shape[2]*shape[3]
+    else:
+      dictTensorLength[layer] = shape[0]*shape[1]
+    dictNrFilters[layer] = shape[1]
+
+    
+  #Now we split the layer in single blocks and run them individually in order to get the inference time per layer
+  onnx_model_split_all_singlenode(onnx_file, splitNodes)     #TODO: we can also get all the info without splitting perhaps
+
+  #Run at inference all the single layer models generated and get the inference execution time and the Nr. of Parameters
+  #Acquire Nr. of Parameters and FLOPS per each layer in the
+  dictNrParams = {}
+  dictFLOPS = {}
+  for layer in splitNodes:
+    #Ignore the first layer since it will be the input
+    if True: #layer != list(dictTensors.keys())[0]:
+      file = "SingleLayerSplits/"+layer.replace("/", '-').replace(":", '_')+'.onnx'
+
+      if os.path.exists(file):
+        #Get the Nr. of Parameters
+        single_layer_model_onnx = load_onnx_model(file)
+        params = calculate_params(single_layer_model_onnx)
+        dictNrParams[layer] = params
+        #print('Number of params:', params)
+
+        #For every model calc FLOPS
+        '''onnx_json = convert(
+          onnx_graph=single_layer_model_onnx.graph,
+        )'''
+        onnx_json = convert(
+          input_onnx_file_path=file,
+          output_json_path="test.json",
+          json_indent=2,
+        )
+        dictNodeFLOPS = calc_flops(onnx_json, batchSize)
+
+        #Sum all the FLOPS of the nodes inside the Single Layer Model
+        dictFLOPS[layer] = 0
+        for node in dictNodeFLOPS:
+          dictFLOPS[layer] = dictFLOPS[layer] + dictNodeFLOPS[node]
+        print(file + " FLOPS: " + str(dictFLOPS[layer]))
+
+  #Open an cvs file to save the results
+  with open(PROFILER_RESULTS_CSV_FILE, 'w', newline='') as csvfile:
+    fieldnames = ['SplitLayer', 'TensorLength', 'OpType', 'NrParameters', 'NrFilters', 'FLOPS', "LayerInfTimeEdge", "LayerInfTimeCloud"]
+    cvswriter = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    cvswriter.writeheader()
+
+    for layer in splitNodes: 
+      cvswriter.writerow({"SplitLayer":layer.replace("/", '-').replace(":", '_'), "TensorLength":dictTensorLength[layer], "OpType":dictOperations[layer], 
+                          "NrParameters":dictNrParams[layer], "NrFilters":dictNrFilters[layer], "FLOPS":dictFLOPS[layer],
+                          "LayerInfTimeEdge": dictSingleLayerInfProfilingEdge[layer], "LayerInfTimeCloud": dictSingleLayerInfProfilingCloud[layer]})
 
 def getSingleLayerExecutionTimeTable(model_onnx, splitNodes, profilingTable):
   '''

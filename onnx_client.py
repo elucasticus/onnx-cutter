@@ -1,7 +1,7 @@
 import numpy as np
 import requests
 import time
-from onnx_manager_flask import onnx_run_complete, onnx_run_all_complete
+from onnx_manager_flask import onnx_run_complete, onnx_run_all_complete, onnx_run_profiler
 
 def main():
     # x = np.random.randn(3, 1).flatten()
@@ -16,6 +16,7 @@ def main():
     onnx_path = "cifar10"
     split_layer = "onnx::Flatten_16"
     onnx_run_all_complete(onnx_file, onnx_path, None, "images", 32, 32, False, "AMD64", 1, "CPU", "CPU_FP64")
+    #onnx_run_profiler(onnx_file, onnx_path, None, "images", 32, 32, False, "AMD64", 1, "CPU", "CPU_FP64")
 
 if __name__ == "__main__":
     main()
