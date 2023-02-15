@@ -1090,4 +1090,5 @@ def getInfTimeBetweenNodes(profilingTable, startNode, endNode):
 
   return 0
 
-
+if __name__ == "__main__":
+  main()
