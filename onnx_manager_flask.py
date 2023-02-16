@@ -90,36 +90,36 @@ ONNX Manager: Manages operations on ONNX DNN Models such as:
     ''',
     epilog='''
 Examples:
-> python onnx_manager.py --operation run --split_layer sequential/dense_1/MatMul:0 
-                         --onnx_path LENET_SplittedModels/ --image_file=images/mnist_test.jpg 
-                         --image_size_x=32 --image_size_y=32 --image_is_grayscale=True
-> python onnx_manager.py --operation run_all --onnx_file lenet.onnx --onnx_path LENET_SplittedModels/ 
-                         --image_file=images/mnist_test.jpg --image_size_x=32 --image_size_y=32 --image_is_grayscale=True
+> python onnx_manager_flask.py --operation run --split_layer sequential/dense_1/MatMul:0 
+                               --onnx_path LENET_SplittedModels/ --image_file=images/mnist_test.jpg 
+                               --image_size_x=32 --image_size_y=32 --image_is_grayscale=True
+> python onnx_manager_flask.py --operation run_all --onnx_file lenet.onnx --onnx_path LENET_SplittedModels/ 
+                               --image_file=images/mnist_test.jpg --image_size_x=32 --image_size_y=32 --image_is_grayscale=True
 
-> python onnx_manager.py --operation list_layers --onnx_file mobilenet_v2.onnx
-> python onnx_manager.py --operation split_model --onnx_file mobilenet_v2.onnx 
-                         --split_layer sequential/mobilenetv2_1.00_160/block_3_project_BN/FusedBatchNormV3:0
+> python onnx_manager_flask.py --operation list_layers --onnx_file mobilenet_v2.onnx
+> python onnx_manager_flask.py --operation split_model --onnx_file mobilenet_v2.onnx 
+                               --split_layer sequential/mobilenetv2_1.00_160/block_3_project_BN/FusedBatchNormV3:0
 
-> python onnx_manager.py --operation run --split_layer sequential/mobilenetv2_1.00_160/block_5_add/add:0 
-                         --onnx_path MobileNetV2_SplittedModles 
-                         --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
-                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False --minio_bucket=onnx-test-mobilenet 
-                         --oscar_service=onnx-test-mobilenet
-> python onnx_manager.py --operation run --split_layer sequential/mobilenetv2_1.00_160/block_5_add/add:0 
-                         --onnx_path MobileNetV2_SplittedModles --image_batch=images/mobilenet_batch 
-                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
-                         --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
+> python onnx_manager_flask.py --operation run --split_layer sequential/mobilenetv2_1.00_160/block_5_add/add:0 
+                               --onnx_path MobileNetV2_SplittedModles 
+                               --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
+                               --image_size_x=160 --image_size_y=160 --image_is_grayscale=False --minio_bucket=onnx-test-mobilenet 
+                               --oscar_service=onnx-test-mobilenet
+> python onnx_manager_flask.py --operation run --split_layer sequential/mobilenetv2_1.00_160/block_5_add/add:0 
+                               --onnx_path MobileNetV2_SplittedModles --image_batch=images/mobilenet_batch 
+                               --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
+                               --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
 
-> python onnx_manager.py --operation run_all --onnx_file mobilenet_v2.onnx --onnx_path MobileNetV2_SplittedModles 
-                         --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
-                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
-                         --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
-> python onnx_manager.py --operation run_all --onnx_file mobilenet_v2.onnx --onnx_path MobileNetV2_SplittedModles 
-                         --image_file=images/mobilenet_batch --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
-                         --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
+> python onnx_manager_flask.py --operation run_all --onnx_file mobilenet_v2.onnx --onnx_path MobileNetV2_SplittedModles 
+                               --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
+                               --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
+                               --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
+> python onnx_manager_flask.py --operation run_all --onnx_file mobilenet_v2.onnx --onnx_path MobileNetV2_SplittedModles 
+                               --image_file=images/mobilenet_batch --image_size_x=160 --image_size_y=160 --image_is_grayscale=False 
+                               --minio_bucket=onnx-test-mobilenet --oscar_service=onnx-test-mobilenet
 
-> python onnx_manager.py --operation data_processing --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
-                         --image_size_x=160 --image_size_y=160 --image_is_grayscale=False
+> python onnx_manager_flask.py --operation data_processing --image_file=images/mobilenet_misc/141340262_ca2e576490_jpg.rf.a9e7a7e679798619924bbc5cade9f806.jpg 
+                               --image_size_x=160 --image_size_y=160 --image_is_grayscale=False
     ''',
     formatter_class=argparse.RawTextHelpFormatter
   )
