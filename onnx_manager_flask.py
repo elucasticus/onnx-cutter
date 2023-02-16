@@ -152,6 +152,7 @@ Examples:
   parser.add_argument('--input_avg_csv_file', help='Select the Average Input File(.csv)')
   parser.add_argument('--filter_layers', nargs='+', help='Specify an array of LayerNames to be filtered.')
   parser.add_argument('--filter_nr_nodes', help='Specify the maximum Nr of Nodes per Split to be filtered.')
+  parser.add_argument('--server_url', help='Select the Address of the Flask Server')
   args=parser.parse_args()
   print ("Operation: " + args.operation)
 
@@ -198,6 +199,7 @@ Examples:
                         args.platform,
                         exec_provider,
                         args.device_type,
+                        args.server_url,
                         args.xml_file)
   elif args.operation == "run_all":
       onnx_run_all_complete(args.onnx_file, 
@@ -211,6 +213,7 @@ Examples:
                             args.rep,
                             exec_provider,
                             args.device_type,
+                            args.server_url,
                             args.xml_file,
                             args.warmup_time)
   elif args.operation == "run_profiler":
@@ -225,6 +228,7 @@ Examples:
                         args.rep,
                         exec_provider,
                         args.device_type,
+                        args.server_url,
                         args.xml_file)
   elif args.operation == "plot_results":
       plot_results(args.results_file)
@@ -258,7 +262,7 @@ def onnx_model_details(onnx_file):
   print(onnx_model)
 
 def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
-                      platform, exec_provider, device_type, xml_file=None):
+                      platform, exec_provider, device_type, server_url, xml_file=None):
   '''
   Run a complete cycle of inference, meaning run the first half of the model locally, get the results, load them on the cloud, 
   execute the second part of the model on the cloud and get the relative results.
@@ -349,7 +353,7 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
     #Send the Intermediate Tensors to the server
     print("Sending the intermediate tensors to the server...")
     departure_time = time.time()
-    response = requests.post("http://127.0.0.1:5000/onnx", json=data).json()
+    response = requests.post(server_url, json=data).json()
 
     #Compute uploading time
     arrival_time = response["arrival_time"]
@@ -373,7 +377,7 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
     
 def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
                           platform, repetitions, exec_provider, 
-                          device_type, xml_file = None, warmupTime = None):
+                          device_type, server_url, xml_file = None, warmupTime = None):
   '''
   Run a complete cycle of inference for every splitted pair of models in the folder passed as argument, save the results in a CSV File and Plot the results.
   To run a complete cycle means to run the first half of the model locally, get the results, load them on the cloud, execute 
@@ -460,6 +464,7 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
                                                                                           platform,
                                                                                           exec_provider,
                                                                                           device_type,
+                                                                                          server_url,
                                                                                           xml_file=xml_file) 
         except Exception as e:
           print("Error on executin RUN Complete cycle: " + str(e))  
@@ -498,6 +503,7 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
                                                                                               platform,
                                                                                               exec_provider,
                                                                                               device_type,
+                                                                                              server_url,
                                                                                               xml_file=xml_file)
             except Exception as e:
               print("Error on executin RUN Complete cycle: " + str(e)) 
@@ -786,7 +792,7 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
   #plot_results(AVG_RESULTS_CSV_FILE)
 
 def onnx_run_profiler(onnx_file, onnx_path, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
-                          platform, repetitions, exec_provider, device_type, xml_file = None):
+                          platform, repetitions, exec_provider, device_type, server_url, xml_file = None):
   '''
   Run with the (onnxruntime)profiling function the full onnx model on both Edge and Cloud and profile the execution times layer by layer as well as
   all the other data such as FLOPS, Nr. of Operations ecc..
@@ -837,6 +843,7 @@ def onnx_run_profiler(onnx_file, onnx_path, image_file, image_batch, img_size_x,
                                                                                         platform,
                                                                                         exec_provider,
                                                                                         device_type,
+                                                                                        server_url,
                                                                                         xml_file=None) 
   except Exception as e:
     print("Error on executin RUN Complete(Profiling) cycle: " + str(e))  
