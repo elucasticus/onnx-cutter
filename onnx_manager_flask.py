@@ -68,8 +68,6 @@ def main():
     --results_file RESULTS_FILE                 Select the Results File(.csv)
     --quant_type QUANT_TYPE                     Choose weight type used during model quantization
                                                 Dependencies: https://www.tensorflow.org/install/source#gpu
-    --platform PLATFORM                         Choose the platform where RUN_ALL/RUN is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
-                                Requirements for GPU: https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements
     --device_type Device_TYPE   Select DeviceType
     --exec_type EXEC_TYPE                       Select Execution Provider at inference: CPU (default) | GPU | OpenVINO | TensorRT | ACL
                                 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'MYRIAD_FP16', 'VAD-M_FP16', 'VAD-F_FP32',
@@ -141,8 +139,6 @@ Examples:
   parser.add_argument('--image_size_y', help='Select the Image Size Y')
   parser.add_argument('--image_is_grayscale', help='Indicate if the Image is in grayscale')
   parser.add_argument('--results_file', help='Select the Results File(.csv)')
-  parser.add_argument("--platform", help='Choose the platform where RUN_ALL/RUN is executed, in order to use the right client for MinIO, OSCAR and Kubernetes', 
-                      choices=['AMD64', 'ARM64'])
   parser.add_argument('--exec_type', help='Select Execution Provider at inference', choices=['CPU', 'GPU', 'OpenVINO', 'TensorRT', 'ACL'])
   parser.add_argument('--device_type', help='Select DeviceType: (CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, \
                                              HETERO:MYRIAD,CPU,  MULTI:MYRIAD,GPU,CPU)')
@@ -196,7 +192,6 @@ Examples:
                         int(args.image_size_x), 
                         int(args.image_size_y), 
                         args.image_is_grayscale == "True",
-                        args.platform,
                         exec_provider,
                         args.device_type,
                         args.server_url,
@@ -209,7 +204,6 @@ Examples:
                             int(args.image_size_x), 
                             int(args.image_size_y), 
                             args.image_is_grayscale == "True",
-                            args.platform,
                             args.rep,
                             exec_provider,
                             args.device_type,
@@ -224,7 +218,6 @@ Examples:
                         int(args.image_size_x), 
                         int(args.image_size_y), 
                         args.image_is_grayscale == "True",
-                        args.platform,
                         args.rep,
                         exec_provider,
                         args.device_type,
@@ -262,7 +255,7 @@ def onnx_model_details(onnx_file):
   print(onnx_model)
 
 def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
-                      platform, exec_provider, device_type, server_url, xml_file=None):
+                      exec_provider, device_type, server_url, xml_file=None):
   '''
   Run a complete cycle of inference, meaning run the first half of the model locally, get the results, load them on the cloud, 
   execute the second part of the model on the cloud and get the relative results.
@@ -274,14 +267,12 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
   :param img_size_x: the horrizontal size of the images
   :param img_size_y: the vertical size of the images
   :param is_grayscale: true if the image is grayscale, false otherwise
-  :param platform: the platform where the script is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
   :param exec_provider: the Execution Provider used at inference (CPU (default) | GPU | OpenVINO | TensorRT | ACL)
   :param device_type: specifies the device type such as 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', etc..
   :return: the 1° inference execution time, the 2° inference execution time, the 2° inference OSCAR execution time and the 2nd inference Kubernetes pod execution time
   '''
   #Default Argument Values
   if is_grayscale == None: is_grayscale = False
-  if platform == None: platform = "AMD64"
 
   #TESTING
   #dictTensors = {} 
@@ -376,7 +367,7 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
   return -1,-1,-1,-1,-1,-1,-1,-1
     
 def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
-                          platform, repetitions, exec_provider, 
+                          repetitions, exec_provider, 
                           device_type, server_url, xml_file = None, warmupTime = None):
   '''
   Run a complete cycle of inference for every splitted pair of models in the folder passed as argument, save the results in a CSV File and Plot the results.
@@ -393,12 +384,10 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
   :param repetition: specifies the number of repetitions to execute
   :param exec_provider: the Execution Provider used at inference (CPU (default) | GPU | OpenVINO | TensorRT | ACL)
   :param device: specifies the device type such as 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', etc..
-  :param platform: the platform where the script is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
   :param warmupTime: a Warmup Time[sec] (default: 60=1m), to run before the execution of the RUN ALL Cycle
   '''
   #Default Argument Values
   if is_grayscale == None: is_grayscale = False
-  if platform == None: platform = "AMD64"
   if repetitions == None: repetitions = 1
   if warmupTime == None: warmupTime = 0#60
 
@@ -461,7 +450,6 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
                                                                                           img_size_x, 
                                                                                           img_size_y, 
                                                                                           is_grayscale,
-                                                                                          platform,
                                                                                           exec_provider,
                                                                                           device_type,
                                                                                           server_url,
@@ -500,7 +488,6 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
                                                                                               img_size_x, 
                                                                                               img_size_y, 
                                                                                               is_grayscale,
-                                                                                              platform,
                                                                                               exec_provider,
                                                                                               device_type,
                                                                                               server_url,
@@ -792,7 +779,7 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
   #plot_results(AVG_RESULTS_CSV_FILE)
 
 def onnx_run_profiler(onnx_file, onnx_path, image_file, image_batch, img_size_x, img_size_y, is_grayscale, 
-                          platform, repetitions, exec_provider, device_type, server_url, xml_file = None):
+                          repetitions, exec_provider, device_type, server_url, xml_file = None):
   '''
   Run with the (onnxruntime)profiling function the full onnx model on both Edge and Cloud and profile the execution times layer by layer as well as
   all the other data such as FLOPS, Nr. of Operations ecc..
@@ -807,11 +794,9 @@ def onnx_run_profiler(onnx_file, onnx_path, image_file, image_batch, img_size_x,
   :param repetition: specifies the number of repetitions to execute
   :param exec_provider: the Execution Provider used at inference (CPU (default) | GPU | OpenVINO | TensorRT | ACL)
   :param device: specifies the device type such as 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', etc..
-  :param platform: the platform where the script is executed, in order to use the right client for MinIO, OSCAR and Kubernetes
   '''
   #Default Argument Values
   if is_grayscale == None: is_grayscale = False
-  if platform == None: platform = "AMD64"
   if repetitions == None: repetitions = 1
 
   #Load the Onnx Model
@@ -840,7 +825,6 @@ def onnx_run_profiler(onnx_file, onnx_path, image_file, image_batch, img_size_x,
                                                                                         img_size_x, 
                                                                                         img_size_y, 
                                                                                         is_grayscale,
-                                                                                        platform,
                                                                                         exec_provider,
                                                                                         device_type,
                                                                                         server_url,
