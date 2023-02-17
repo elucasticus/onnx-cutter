@@ -418,6 +418,7 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
     with open(RESULTS_CSV_FILE2, 'w', newline='') as csvfile2:
       # Repeat the whole cycle the specified number of times
       for rep in range(0, repetitions):
+        print("##########   REPETITION #%d   ##########" %(rep + 1))
         #fieldnames = ['SplitLayer', 'Time1', 'Time2', 'Time3', 'Time4']
         fieldnames = ['SplitLayer', '1stInfTime', '2ndInfTime', 'oscarJobTime', 'kubePodTime', 
                       'tensorSaveTime', 'tensorLoadTime', 'tensorLength', 'networkingTime']
