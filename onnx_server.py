@@ -17,7 +17,7 @@ def run(onnx_path, EP_list, device):
     @app.route("/onnx", methods=["POST", "GET"])
     def test():
         data = request.json
-        arrival_time = time.time_ns()
+        arrival_time = time.time()
         returnData = onnx_search_and_run_second_half(onnx_path, None, data, None, EP_list, device)
         returnData["Outcome"] = "Success"
         returnData["arrival_time"] = arrival_time
