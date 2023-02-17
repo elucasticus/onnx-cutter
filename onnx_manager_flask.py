@@ -585,8 +585,8 @@ def onnx_run_all_complete(onnx_file, onnx_path, image_file, image_batch, img_siz
               onnx_tool.model_profile(file, dynamic_inputs, savenode='single_node_table.csv')
 
               #Get the data from the MACs & Nr. Parameters Profiling and SUM all the values (now directly get the total)
-              with open('single_node_table.csv', 'r', newline='') as csvfile:
-                reader = csv.reader(csvfile, delimiter=",")
+              with open('single_node_table.csv', 'r', newline='') as inner_csvfile:
+                reader = csv.reader(inner_csvfile, delimiter=",")
                 for i, line in enumerate(reader):
                   if line[0] == "Total":
                     dictMACS[layer] = line[1]
