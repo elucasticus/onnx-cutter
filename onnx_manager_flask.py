@@ -343,7 +343,7 @@ def onnx_run_complete(onnx_path, split_layer, image_file, image_batch, img_size_
     data["result"] = data["result"].tolist()
     #Send the Intermediate Tensors to the server
     print("Sending the intermediate tensors to the server...")
-    departure_time = time.time()
+    departure_time = time.time_ns()
     response = requests.post(server_url, json=data).json()
 
     #Compute uploading time
