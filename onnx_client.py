@@ -14,9 +14,7 @@ def main():
 
     onnx_file = "cifar10.onnx"
     onnx_path = "cifar10"
-    split_layer = "onnx::Flatten_16"
-    onnx_run_all_complete(onnx_file, onnx_path, None, "images", 32, 32, False, "AMD64", 1, "CPU", "CPU_FP64")
-    #onnx_run_profiler(onnx_file, onnx_path, None, "images", 32, 32, False, "AMD64", 1, "CPU", "CPU_FP64")
+    onnx_run_all_complete(onnx_file, onnx_path, None, "images", 32, 32, False, 2, "CPU", None, "http://127.0.0.1:5000/onnx")
 
 if __name__ == "__main__":
     main()
