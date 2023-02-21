@@ -4,3 +4,4 @@ images
 cifar10
 onnx_models
 mobilenet.onnx
+*.npy
