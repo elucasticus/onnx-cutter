@@ -12,5 +12,5 @@ RUN pip3 install -r requirements.txt
 
 COPY . .
 
-CMD python3 onnx_manager_flask.py --operation run_all --onnx_file onnx_models/test/mobilenet.onnx --onnx_path onnx_models/test --image_batch images/mobilenet --image_size_x 160 --image_size_y 160 --image_is_grayscale False --server_url http://192.168.86.21:5000/onnx
+CMD python3 onnx_manager_flask.py --operation run_all --onnx_file mobilenet.onnx --onnx_path onnx_models/test --image_batch images/mobilenet --image_size_x 160 --image_size_y 160 --image_is_grayscale False --server_url http://192.168.86.21:5000/onnx
 
