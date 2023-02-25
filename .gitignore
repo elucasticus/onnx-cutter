@@ -5,3 +5,5 @@ cifar10
 onnx_models
 mobilenet.onnx
 *.npy
+resnet101.onnx
+resnet50.onnx
